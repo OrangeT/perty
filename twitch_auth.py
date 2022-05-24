@@ -58,6 +58,8 @@ def auth_code_flow():
         keyfile="key.pem", 
         certfile='cert.pem', server_side=True)
 
+    print(f'Please open your browser at {redirect_uri}')
+
     # Keep listening until we handle a post request
     while HandleRequests.keep_running:
          httpd.handle_request()
@@ -114,7 +116,7 @@ def get_tokens():
         'redirect_uri': redirect_uri
     }
     if code:
-        requesst_payload['grant_type'] = 'authorization_code'
+        request_payload['grant_type'] = 'authorization_code'
         request_payload['code'] = code
     if refresh_token:
         request_payload['grant_type'] = 'refresh_token'
