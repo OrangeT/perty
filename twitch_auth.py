@@ -1,6 +1,7 @@
 # Twitch OAuth Handling
 
 from config import load_config
+import yaml
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
 import ssl
@@ -62,21 +63,47 @@ def auth_code_flow():
          httpd.handle_request()
 
 def read_code():
-    global code
-    if exists("code.txt"):
-        with open("code.txt", "r") as f:
-            code = f.read()
+    global access_token
+    global refresh_token
 
-def write_code(code):
-    with open("code.txt", "w") as f:
-            f.write(code)
-            f.close()
+    if exists("code.yml"):
+        print("Reading Twitch tokens")
+        with open("code.yml", "r") as ymlfile:
+            code = yaml.safe_load(ymlfile)
+            access_token = code['access_token']
+            refresh_token = code['refresh_token']
+            return True
 
-def get_code():
-    if not code:
-        auth_code_flow()
+    return False
+
+def write_code():
+    global access_token
+    global refresh_token
+
+
+    with open("code.yml", "w") as ymlfile:
+        print("Writing Twitch tokens")
+        yaml.dump({
+            'access_token': access_token,
+            'refresh_token': refresh_token
+        }, ymlfile)
+
+def validate():
+
+    print("Validating Twitch tokens...", end='')
+    url = 'https://id.twitch.tv/oauth2/validate'
+    r = requests.get(url, headers={'Authorization': f'Oauth {access_token}'})
+    if r.status_code == 200:
+        print("valid")
+        return True
+    elif r.status_code == 401:
+        print("invalid")
+        return False
+    else:
+        raise Exception(f'Unrecognised status code on validate {r.status_code}')
 
 def get_tokens():
+    print("Fetching Twitch tokens")
     global access_token
     global refresh_token
 
@@ -84,10 +111,14 @@ def get_tokens():
     request_payload = {
         "client_id": cfg['twitch']['client_id'],
         "client_secret": cfg['twitch']['client_secret'],
-        'code': code,
-        'grant_type': 'authorization_code',
         'redirect_uri': redirect_uri
     }
+    if code:
+        requesst_payload['grant_type'] = 'authorization_code'
+        request_payload['code'] = code
+    if refresh_token:
+        request_payload['grant_type'] = 'refresh_token'
+        request_payload['refresh_token'] = refresh_token
 
     r = requests.post(url, data=request_payload).json()
     try:
@@ -100,8 +131,12 @@ def get_tokens():
         print(r)
 
 def oauth():
-    # read_code()
-    get_code()
-    # write_code(code)
-    get_tokens()
+    if read_code(): # Code exists
+        if not validate():
+            get_tokens()
+    else:
+        auth_code_flow() # User login auth
+        get_tokens()
+    write_code()
+
     return access_token
